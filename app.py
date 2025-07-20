@@ -82,7 +82,7 @@ def calcular_data_progressao(
 # --- INTERFACE STREAMLIT ---
 st.set_page_config(page_title="Progressão Docente", page_icon="🎓")
 st.title("Calculadora de Progressão Docente")
-st.write("Desenvolvido por **Manuel Sousa Couto**")
+st.write("Desenvolvido por **Manuel Couto**")
 st.write("Preveja a sua próxima progressão de escalão com base no tempo de serviço efetivo e recuperado.")
 
 with st.form("dados_professor"):
@@ -125,4 +125,4 @@ if submitted:
         st.write(f"{data.date()}: {dias} dias")
 
 st.markdown("---")
-st.caption("App desenvolvida por Manuel Sousa Couto. Confirme sempre os resultados junto da legislação e da escola/agrupamento.")
+st.caption("Confirme sempre os resultados junto da legislação e da escola/agrupamento.")
