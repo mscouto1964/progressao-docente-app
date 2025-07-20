@@ -8,11 +8,12 @@ def calcular_proxima_progressao(
     horas_formacao: float,
     avaliacao: str,
     observacao_aulas: bool,
-    dias_congelados: int = 3411,
-    dias_recuperados_anteriores: int = 1018,
     acelerador_2023: bool = False,
     grau_academico: str = None,
     bonificacao_merito: str = None,
+    dias_cong_1: int = 854,
+    dias_cong_2: int = 2557,
+    dias_recuperados_anteriores: int = 1018,
     tranches_recuperacao: list = None,
     data_hoje: datetime = None
 ):
@@ -21,16 +22,18 @@ def calcular_proxima_progressao(
     modulo_escalao = 730 if escalão_atual == 5 else 1460
     horas_formacao_necessarias = 12.5 if escalão_atual == 5 else 25
 
-    dias_a_recuperar = 2393
+    # Calcular dias de serviço congelado e a recuperar
+    dias_congelados = dias_cong_1 + dias_cong_2
+    dias_a_recuperar = dias_congelados - dias_recuperados_anteriores
     if acelerador_2023:
         dias_a_recuperar -= 365
 
     if tranches_recuperacao is None:
         tranches_recuperacao = [
-            (datetime(2024,9,1), 599),
-            (datetime(2025,7,1), 598),
-            (datetime(2026,7,1), 598),
-            (datetime(2027,7,1), 598),
+            (datetime(2024,9,1), min(599, dias_a_recuperar)),
+            (datetime(2025,7,1), min(598, max(dias_a_recuperar-599,0))),
+            (datetime(2026,7,1), min(598, max(dias_a_recuperar-1197,0))),
+            (datetime(2027,7,1), min(598, max(dias_a_recuperar-1795,0))),
         ]
     dias_recuperados_rtp = sum(qt for data, qt in tranches_recuperacao if data <= data_hoje)
 
@@ -80,7 +83,9 @@ def calcular_proxima_progressao(
         "data_progressao": data_progressao.date(),
         "mensagem": mensagem,
         "requisitos_em_falta": requisitos,
-        "remanescente_para_novo_escalão": max(dias_totais - modulo_escalao, 0) if not requisitos else 0
+        "remanescente_para_novo_escalão": max(dias_totais - modulo_escalao, 0) if not requisitos else 0,
+        "dias_congelados": dias_congelados,
+        "dias_a_recuperar": dias_a_recuperar
     }
 
 # --- INTERFACE STREAMLIT ---
@@ -90,13 +95,23 @@ st.write("Simule a sua próxima progressão de escalão segundo as regras RITS (
 
 with st.form("dados_professor"):
     st.header("Dados do Docente")
+    dias_cong_1 = st.number_input(
+        "Dias trabalhados no 1º período de congelamento (30/08/2005–31/12/2007)",
+        min_value=0, max_value=854, value=854
+    )
+    dias_cong_2 = st.number_input(
+        "Dias trabalhados no 2º período de congelamento (01/01/2011–31/12/2017)",
+        min_value=0, max_value=2557, value=2557
+    )
+    acelerador_2023 = st.checkbox(
+        "Usufruiu da aceleração da progressão ao abrigo do DL n.º 74/2023?", value=False
+    )
     data_entrada_escalao = st.date_input("Data de entrada no escalão atual", value=datetime(2022,9,1))
     escalão_atual = st.selectbox("Escalão atual", options=list(range(1,11)), index=3)
     dias_servico_efetivo = st.number_input("Dias de serviço efetivo desde a entrada no escalão", min_value=0, value=1200)
     horas_formacao = st.number_input("Horas de formação realizadas (até hoje)", min_value=0.0, value=25.0)
     avaliacao = st.selectbox("Avaliação de desempenho mais recente", options=["Excelente", "Muito Bom", "Bom", "Regular", "Insuficiente"], index=2)
     observacao_aulas = st.checkbox("Cumpriu observação de aulas (obrigatório em alguns escalões)?", value=True)
-    acelerador_2023 = st.checkbox("Beneficiou de redução pelo acelerador em 2023/2024?", value=False)
     grau_academico = st.selectbox("Grau académico com redução", options=["Nenhum", "Mestre", "Doutor"], index=0)
     bonificacao_merito = st.selectbox("Bonificação de mérito", options=["Nenhuma", "Muito Bom", "Excelente"], index=0)
     submitted = st.form_submit_button("Calcular Progressão")
@@ -111,12 +126,16 @@ if submitted:
         observacao_aulas=observacao_aulas,
         acelerador_2023=acelerador_2023,
         grau_academico=None if grau_academico == "Nenhum" else grau_academico,
-        bonificacao_merito=None if bonificacao_merito == "Nenhuma" else bonificacao_merito
+        bonificacao_merito=None if bonificacao_merito == "Nenhuma" else bonificacao_merito,
+        dias_cong_1=dias_cong_1,
+        dias_cong_2=dias_cong_2
     )
 
     st.success(resultado["mensagem"])
     st.write(f"**Data previsível de progressão:** {resultado['data_progressao']}")
     st.write(f"**Dias de serviço contabilizados:** {resultado['dias_no_escalao']}")
+    st.write(f"**Dias congelados totais:** {resultado['dias_congelados']}")
+    st.write(f"**Dias a recuperar ao abrigo do DL 48-B/2024:** {resultado['dias_a_recuperar']}")
     if resultado["requisitos_em_falta"]:
         st.warning("Requisitos em falta: " + "; ".join(resultado["requisitos_em_falta"]))
     else:
