@@ -1,145 +1,128 @@
 import streamlit as st
 from datetime import datetime, timedelta
 
-def calcular_proxima_progressao(
+def calcular_data_progressao(
     data_entrada_escalao: datetime,
     escalão_atual: int,
-    dias_servico_efetivo: int,
-    horas_formacao: float,
-    avaliacao: str,
-    observacao_aulas: bool,
-    acelerador_2023: bool = False,
-    grau_academico: str = None,
-    bonificacao_merito: str = None,
-    dias_cong_1: int = 854,
-    dias_cong_2: int = 2557,
-    dias_recuperados_anteriores: int = 1018,
-    tranches_recuperacao: list = None,
-    data_hoje: datetime = None
+    dias_cong_1: int,
+    dias_cong_2: int,
+    acelerador_2023: bool,
+    dias_remanescentes: int
 ):
-    if data_hoje is None:
-        data_hoje = datetime.today()
+    # Parâmetros do ECD
+    dias_recuperados_anteriores = 1018
     modulo_escalao = 730 if escalão_atual == 5 else 1460
-    horas_formacao_necessarias = 12.5 if escalão_atual == 5 else 25
 
-    # Calcular dias de serviço congelado e a recuperar
+    # 1. Calcular dias congelados e a recuperar
     dias_congelados = dias_cong_1 + dias_cong_2
     dias_a_recuperar = dias_congelados - dias_recuperados_anteriores
     if acelerador_2023:
         dias_a_recuperar -= 365
 
-    if tranches_recuperacao is None:
+    # 2. Distribuir pelas tranches (regra: acelerador = 4 parcelas iguais, caso contrário tranches de 599/598)
+    if acelerador_2023:
+        parcela = dias_a_recuperar // 4
+        tranches = [parcela]*4
+        resto = dias_a_recuperar - parcela*4
+        for i in range(resto):
+            tranches[i] += 1
+        tranches_recuperacao = [
+            (datetime(2024,9,1), tranches[0]),
+            (datetime(2025,7,1), tranches[1]),
+            (datetime(2026,7,1), tranches[2]),
+            (datetime(2027,7,1), tranches[3]),
+        ]
+    else:
         tranches_recuperacao = [
             (datetime(2024,9,1), min(599, dias_a_recuperar)),
             (datetime(2025,7,1), min(598, max(dias_a_recuperar-599,0))),
             (datetime(2026,7,1), min(598, max(dias_a_recuperar-1197,0))),
             (datetime(2027,7,1), min(598, max(dias_a_recuperar-1795,0))),
         ]
-    dias_recuperados_rtp = sum(qt for data, qt in tranches_recuperacao if data <= data_hoje)
 
-    dias_bonificacao_merito = 0
-    if bonificacao_merito == "Excelente":
-        dias_bonificacao_merito = 365
-    elif bonificacao_merito == "Muito Bom":
-        dias_bonificacao_merito = 180
+    # 3. Cálculo do tempo de serviço acumulado no escalão
+    datas = []
+    dias_acumulados = dias_remanescentes
+    data_atual = data_entrada_escalao
+    hoje = datetime.today()
 
-    dias_reducao_grau = 0
-    if grau_academico == "Mestre":
-        dias_reducao_grau = 365
-    elif grau_academico == "Doutor":
-        dias_reducao_grau = 730
+    # Listar as datas das tranches futuras
+    tranches_futuras = [(d, n) for d, n in tranches_recuperacao if d >= data_atual]
 
-    dias_totais = dias_servico_efetivo + dias_recuperados_rtp + dias_bonificacao_merito + dias_reducao_grau
-
-    requisitos = []
-    if avaliacao not in ["Bom", "Muito Bom", "Excelente"]:
-        requisitos.append("Avaliação mínima de 'Bom'")
-    if horas_formacao < horas_formacao_necessarias:
-        requisitos.append(f"Faltam {horas_formacao_necessarias - horas_formacao:.1f} horas de formação")
-    if escalão_atual in [2,3,4,5] and not observacao_aulas:
-        requisitos.append("Necessita observação de aulas no escalão")
-    if dias_totais < modulo_escalao:
-        requisitos.append(f"Faltam {modulo_escalao - dias_totais} dias de serviço no escalão")
-
-    if not requisitos:
-        data_progressao = data_hoje
-        mensagem = f"Pode progredir já ao {escalão_atual + 1}º escalão."
-        dias_em_falta = 0
-    else:
-        dias_em_falta = max(modulo_escalao - dias_totais, 0)
-        if dias_em_falta > 0:
-            data_progressao = data_hoje.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=dias_em_falta)
-            mensagem = (f"Prevê-se progressão ao {escalão_atual + 1}º escalão em {data_progressao.date()} "
-                        f"se cumprir todos os requisitos.")
+    while dias_acumulados < modulo_escalao:
+        # Próxima tranche (ou data de hoje se já passou)
+        if tranches_futuras and data_atual >= tranches_futuras[0][0]:
+            # Se já passou a tranche, soma e remove da lista
+            _, dias_tranche = tranches_futuras.pop(0)
+            dias_acumulados += dias_tranche
+            datas.append((data_atual, dias_acumulados))
         else:
-            data_progressao = data_hoje
-            mensagem = f"Requisitos pendentes: " + "; ".join(requisitos)
+            # Conta dias de serviço real até à próxima tranche ou até perfazer o módulo
+            proxima_data = tranches_futuras[0][0] if tranches_futuras else hoje + timedelta(days=modulo_escalao)
+            dias_ate_proxima_tranche = (proxima_data - data_atual).days
+            dias_para_modulo = modulo_escalao - dias_acumulados
+            dias_a_contar = min(dias_ate_proxima_tranche, dias_para_modulo)
+            dias_acumulados += dias_a_contar
+            data_atual += timedelta(days=dias_a_contar)
+            datas.append((data_atual, dias_acumulados))
+            if dias_acumulados >= modulo_escalao:
+                break
+
+    data_progressao = data_atual
 
     return {
-        "escalão_atual": escalão_atual,
-        "dias_no_escalao": dias_totais,
-        "dias_em_falta": dias_em_falta,
-        "proximo_escalão": escalão_atual + 1,
         "data_progressao": data_progressao.date(),
-        "mensagem": mensagem,
-        "requisitos_em_falta": requisitos,
-        "remanescente_para_novo_escalão": max(dias_totais - modulo_escalao, 0) if not requisitos else 0,
-        "dias_congelados": dias_congelados,
-        "dias_a_recuperar": dias_a_recuperar
+        "dias_no_escalao": dias_acumulados,
+        "historico": datas,
+        "dias_a_recuperar": dias_a_recuperar,
+        "tranches": tranches_recuperacao,
+        "modulo_escalao": modulo_escalao,
     }
 
 # --- INTERFACE STREAMLIT ---
 st.set_page_config(page_title="Progressão Docente", page_icon="🎓")
 st.title("Calculadora de Progressão Docente")
-st.write("Simule a sua próxima progressão de escalão segundo as regras RITS (2024-2027).")
+st.write("Desenvolvido por **Manuel Sousa Couto**")
+st.write("Preveja a sua próxima progressão de escalão com base no tempo de serviço efetivo e recuperado.")
 
 with st.form("dados_professor"):
-    st.header("Dados do Docente")
+    st.header("Dados para o cálculo")
     dias_cong_1 = st.number_input(
-        "Dias trabalhados no 1º período de congelamento (30/08/2005–31/12/2007)",
+        "Dias trabalhados no 1º congelamento (30/08/2005–31/12/2007)",
         min_value=0, max_value=854, value=854
     )
     dias_cong_2 = st.number_input(
-        "Dias trabalhados no 2º período de congelamento (01/01/2011–31/12/2017)",
+        "Dias trabalhados no 2º congelamento (01/01/2011–31/12/2017)",
         min_value=0, max_value=2557, value=2557
     )
     acelerador_2023 = st.checkbox(
         "Usufruiu da aceleração da progressão ao abrigo do DL n.º 74/2023?", value=False
     )
-    data_entrada_escalao = st.date_input("Data de entrada no escalão atual", value=datetime(2022,9,1))
-    escalão_atual = st.selectbox("Escalão atual", options=list(range(1,11)), index=3)
-    dias_servico_efetivo = st.number_input("Dias de serviço efetivo desde a entrada no escalão", min_value=0, value=1200)
-    horas_formacao = st.number_input("Horas de formação realizadas (até hoje)", min_value=0.0, value=25.0)
-    avaliacao = st.selectbox("Avaliação de desempenho mais recente", options=["Excelente", "Muito Bom", "Bom", "Regular", "Insuficiente"], index=2)
-    observacao_aulas = st.checkbox("Cumpriu observação de aulas (obrigatório em alguns escalões)?", value=True)
-    grau_academico = st.selectbox("Grau académico com redução", options=["Nenhum", "Mestre", "Doutor"], index=0)
-    bonificacao_merito = st.selectbox("Bonificação de mérito", options=["Nenhuma", "Muito Bom", "Excelente"], index=0)
+    data_entrada_escalao = st.date_input("Data de entrada no escalão atual", value=datetime(2024,10,27))
+    escalão_atual = st.selectbox("Escalão atual", options=list(range(1,11)), index=8)
+    dias_remanescentes = st.number_input("Tempo de serviço que transita para o escalão atual (em dias)", min_value=0, value=0)
     submitted = st.form_submit_button("Calcular Progressão")
 
 if submitted:
-    resultado = calcular_proxima_progressao(
+    resultado = calcular_data_progressao(
         data_entrada_escalao=datetime.combine(data_entrada_escalao, datetime.min.time()),
         escalão_atual=escalão_atual,
-        dias_servico_efetivo=dias_servico_efetivo,
-        horas_formacao=horas_formacao,
-        avaliacao=avaliacao,
-        observacao_aulas=observacao_aulas,
-        acelerador_2023=acelerador_2023,
-        grau_academico=None if grau_academico == "Nenhum" else grau_academico,
-        bonificacao_merito=None if bonificacao_merito == "Nenhuma" else bonificacao_merito,
         dias_cong_1=dias_cong_1,
-        dias_cong_2=dias_cong_2
+        dias_cong_2=dias_cong_2,
+        acelerador_2023=acelerador_2023,
+        dias_remanescentes=dias_remanescentes
     )
 
-    st.success(resultado["mensagem"])
-    st.write(f"**Data previsível de progressão:** {resultado['data_progressao']}")
-    st.write(f"**Dias de serviço contabilizados:** {resultado['dias_no_escalao']}")
-    st.write(f"**Dias congelados totais:** {resultado['dias_congelados']}")
-    st.write(f"**Dias a recuperar ao abrigo do DL 48-B/2024:** {resultado['dias_a_recuperar']}")
-    if resultado["requisitos_em_falta"]:
-        st.warning("Requisitos em falta: " + "; ".join(resultado["requisitos_em_falta"]))
-    else:
-        st.info(f"Remanescente para o novo escalão: {resultado['remanescente_para_novo_escalão']} dias")
+    st.success(f"Data previsível de progressão: **{resultado['data_progressao']}**")
+    st.write(f"Tempo total acumulado no escalão: **{resultado['dias_no_escalao']} dias**")
+    st.write(f"Dias de serviço a recuperar: **{resultado['dias_a_recuperar']}**")
+    st.write(f"Tempo de serviço necessário para progressão (módulo): **{resultado['modulo_escalao']} dias**")
+    st.subheader("Tranches de recuperação:")
+    for data, dias in resultado['tranches']:
+        st.write(f"- {data.date()}: {dias} dias")
+    st.subheader("Evolução do tempo de serviço no escalão:")
+    for data, dias in resultado["historico"]:
+        st.write(f"{data.date()}: {dias} dias")
 
 st.markdown("---")
-st.caption("App de demonstração. Confirme sempre os cálculos com a legislação em vigor.")
+st.caption("App desenvolvida por Manuel Sousa Couto. Confirme sempre os resultados junto da legislação e da escola/agrupamento.")
