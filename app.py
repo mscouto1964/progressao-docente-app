@@ -164,7 +164,7 @@ if submitted:
 
 st.markdown("---")
 st.caption("""
-App desenvolvida por Manuel Couto. V1.1
+App desenvolvida por Manuel Sousa Couto.
 Sugestões ou dúvidas: mscouto@aecorga.pt
 Confirme sempre os resultados junto da legislação e da escola/agrupamento.
 
