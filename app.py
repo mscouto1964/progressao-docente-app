@@ -109,7 +109,7 @@ def calcular_data_progressao(
 # --- INTERFACE STREAMLIT ---
 st.set_page_config(page_title="Progressão Docente", page_icon="🎓")
 st.title("Calculadora de Progressão Docente")
-st.write("Desenvolvido por **Manuel Sousa Couto**")
+st.write("Desenvolvido por **Manuel Couto - V1.1**")
 st.write("Preveja a sua próxima progressão de escalão com base no tempo de serviço efetivo e recuperado.\n\nA ordem legal de contabilização é: bonificação por mérito → redução por grau académico → tempo recuperado.")
 
 with st.form("dados_professor"):
@@ -164,7 +164,6 @@ if submitted:
 
 st.markdown("---")
 st.caption("""
-App desenvolvida por Manuel Sousa Couto.
 Sugestões ou dúvidas: mscouto@aecorga.pt
 Confirme sempre os resultados junto da legislação e da escola/agrupamento.
 
