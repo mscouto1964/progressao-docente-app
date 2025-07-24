@@ -66,40 +66,50 @@ def calcular_data_progressao(
     data_atual = data_entrada_escalao
     hoje = datetime.today()
     tranches_futuras = [(d, n) for d, n in tranches_recuperacao if d >= data_atual]
+    dias_acumulados_instantaneo = dias_acumulados
 
-    while dias_acumulados < modulo_escalao:
+    while dias_acumulados_instantaneo < modulo_escalao:
+        # Próxima tranche
         if tranches_futuras and data_atual >= tranches_futuras[0][0]:
             proxima_data, dias_tranche = tranches_futuras.pop(0)
-            dias_acumulados += dias_tranche
+            dias_acumulados_instantaneo += dias_tranche
             ordem_explicacao.append(f"Tranche de {dias_tranche} dias em {proxima_data.strftime('%d-%m-%Y')}")
-            datas.append((data_atual, dias_acumulados))
+            datas.append((data_atual, dias_acumulados_instantaneo))
         else:
             proxima_data = tranches_futuras[0][0] if tranches_futuras else hoje + timedelta(days=modulo_escalao)
             dias_ate_proxima_tranche = (proxima_data - data_atual).days
-            dias_para_modulo = modulo_escalao - dias_acumulados
+            dias_para_modulo = modulo_escalao - dias_acumulados_instantaneo
             dias_a_contar = min(dias_ate_proxima_tranche, dias_para_modulo)
-            dias_acumulados += dias_a_contar
+            dias_acumulados_instantaneo += dias_a_contar
             data_atual += timedelta(days=dias_a_contar)
-            datas.append((data_atual, dias_acumulados))
-            if dias_acumulados >= modulo_escalao:
+            datas.append((data_atual, dias_acumulados_instantaneo))
+            if dias_acumulados_instantaneo >= modulo_escalao:
                 break
 
-    data_progressao = data_atual
+    data_modulo = data_atual
+    data_1ano = data_entrada_escalao + timedelta(days=365)
+    # Só pode progredir após 365 dias, mesmo que atinja o módulo antes
+    data_progressao = max(data_modulo, data_1ano)
+    # Se teve de esperar pelo ano, tempo em excesso transita!
+    tempo_excesso = (data_progressao - data_modulo).days if data_progressao > data_modulo else 0
 
     return {
         "data_progressao": data_progressao.date(),
-        "dias_no_escalao": dias_acumulados,
+        "dias_no_escalao": dias_acumulados_instantaneo + tempo_excesso,
         "historico": datas,
         "dias_a_recuperar": dias_a_recuperar,
         "tranches": tranches_recuperacao,
         "modulo_escalao": modulo_escalao,
-        "ordem_explicacao": ordem_explicacao
+        "ordem_explicacao": ordem_explicacao,
+        "data_atinge_modulo": data_modulo.date(),
+        "data_1ano": data_1ano.date(),
+        "tempo_excesso": tempo_excesso
     }
 
 # --- INTERFACE STREAMLIT ---
 st.set_page_config(page_title="Progressão Docente", page_icon="🎓")
 st.title("Calculadora de Progressão Docente")
-st.write("Desenvolvido por **Manuel Couto**")
+st.write("Desenvolvido por **Manuel Sousa Couto**")
 st.write("Preveja a sua próxima progressão de escalão com base no tempo de serviço efetivo e recuperado.\n\nA ordem legal de contabilização é: bonificação por mérito → redução por grau académico → tempo recuperado.")
 
 with st.form("dados_professor"):
@@ -138,6 +148,10 @@ if submitted:
     st.write(f"Tempo total acumulado no escalão: **{resultado['dias_no_escalao']} dias**")
     st.write(f"Dias de serviço a recuperar: **{resultado['dias_a_recuperar']}**")
     st.write(f"Tempo de serviço necessário para progressão (módulo): **{resultado['modulo_escalao']} dias**")
+    st.write(f"Data em que atinge o módulo: {resultado['data_atinge_modulo']}")
+    st.write(f"Data em que perfaz 365 dias no escalão: {resultado['data_1ano']}")
+    if resultado["tempo_excesso"] > 0:
+        st.info(f"Aguarda {resultado['tempo_excesso']} dias para perfazer 1 ano. Este tempo transita para o próximo escalão.")
     st.subheader("Ordem de contabilização aplicada:")
     for linha in resultado['ordem_explicacao']:
         st.write("-", linha)
@@ -150,6 +164,9 @@ if submitted:
 
 st.markdown("---")
 st.caption("""
+App desenvolvida por Manuel Couto. V1.1
 Sugestões ou dúvidas: mscouto@aecorga.pt
 Confirme sempre os resultados junto da legislação e da escola/agrupamento.
+
+Nota: Se o repositório for público no GitHub, qualquer utilizador pode ver e sugerir melhorias ao código.
 """)
